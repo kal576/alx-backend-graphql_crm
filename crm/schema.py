@@ -1,6 +1,8 @@
 import graphene
 from graphene_django import DjangoObjectType
 from .models import Customer, Product, Order
+from .filters import CustomerFilter, ProductFilter, OrderFilter
+from graphene_filters import DjangoFilterConnectionField
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 import re
@@ -17,14 +19,43 @@ def validate_phone(phone):
 class CustomerType(DjangoObjectType):
     class Meta:
         model = Customer
+        fields = ("id", "name", "email", "phone", "created_at")
 
 class ProductType(DjangoObjectType):
     class Meta:
         model = Product
+        fields = ("id", "name", "price", "stock")
 
 class OrderType(DjangoObjectType):
     class Meta:
         model = Order
+        fields = ("id", "customer", "products", "total_amount", "order_date")
+
+#filter inputs
+class CustomerFilterInput(graphene.InputObjectType):
+    name = graphene.String()
+    email = graphene.String()
+    created_at_gte = graphene.Date()
+    created_at_lte = graphene.Date()
+    phone_pattern = graphene.String()
+
+
+class ProductFilterInput(graphene.InputObjectType):
+    name = graphene.String()
+    price_gte = graphene.Float()
+    price_lte = graphene.Float()
+    stock_gte = graphene.Int()
+    stock_lte = graphene.Int()
+
+
+class OrderFilterInput(graphene.InputObjectType):
+    total_amount_gte = graphene.Float()
+    total_amount_lte = graphene.Float()
+    order_date_gte = graphene.Date()
+    order_date_lte = graphene.Date()
+    customer_name = graphene.String()
+    product_name = graphene.String()
+    product_id = graphene.ID()
 
 #inputs
 class CustomerInput(graphene.InputObjectType):
@@ -153,9 +184,17 @@ class Mutation(graphene.ObjectType):
     create_order = CreateOrder.Field()
 
 class Query(graphene.ObjectType):
+    hello = graphene.String()
+
+    #simple list queries
     customers = graphene.List(CustomerType)
     producs = graphene.List(ProductType)
     orders = graphene.List(OrderType)
+
+    #filtered connection queries to handle filter requests faster
+    all_customers = DjangoFilterConnectionField(CustomerType, filterset_class=CustomerFilter, filter_input_type=CustomerFilterInput)
+    all_products = DjangoFilterConnectionField(ProductType, filterset_class=ProductFilter, filter_input_type=ProductFilterInput)
+    all_orders = DjangoFilterConnectionField(OrderType, filterset_class=OrderFilter, filter_input_type=OrderFilterInput)
 
     def resolve_customers(self, info):
         return Customer.objects.all()
