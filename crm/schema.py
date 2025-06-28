@@ -1,10 +1,11 @@
 import graphene
-from graphene-django import DjangoObjectType
+from graphene_django import DjangoObjectType
 from .models import Customer, Product, Order
-from django.core,exceptions import ValidationError
-from django_core.validators import validate_email
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 import re
 from django.db import transaction
+from datetime import datetime
 
 #validating phone number format
 def validate_phone(phone):
@@ -47,7 +48,7 @@ class CreateCustomer(graphene.Mutation):
         input = CustomerInput(required=True)
 
     customer = graphene.Field(CustomerType)
-    message = graphene.string()
+    message = graphene.String()
 
     def mutate(root, info, input):
         try:
@@ -67,7 +68,7 @@ class CreateCustomer(graphene.Mutation):
         except Exception as e:
             raise Exception(str(e))
 
-class BulkCreateCustomers:
+class BulkCreateCustomers(graphene.Mutation):
     class Arguments:
         input = graphene.List(CustomerInput, required=True)
 
@@ -116,3 +117,53 @@ class CreateProduct(graphene.Mutation):
 class CreateOrder(graphene.Mutation):
     class Arguments:
         input = OrderInput(required=True)
+
+    @staticmethod
+    def mutate(root, info, input):
+        try:
+            customers = Customer.objects.get(pk=input.customerId)
+        except Customer.DoesNotExist:
+            raise Exception("Customer does not exist")
+
+        product_ids = input.productIds
+        if not product_ids:
+            raise Exception("At least one product is required")
+
+        products = list(Product.objects.filter(id__in=product_ids))
+        if len(products) != len(product_ids):
+            missing = set(product_ids) - set(str(p.id) for p in products)
+            raise Exception(f"Invalid product IDs: {missing}")
+
+        total_amount = sum(p.price for p in products)
+        order = Order.objects.create(
+                customer=customer,
+            total_amount=total_amount,
+            order_date=input.orderDate
+            )
+
+        order.products.set(order)
+        order.save
+
+        return order
+
+class Mutation(graphene.ObjectType):
+    create_customer = CreateCustomer.Field()
+    bulk_create_customers = BulkCreateCustomers.Field()
+    create_product = CreateProduct.Field()
+    create_order = CreateOrder.Field()
+
+class Query(graphene.ObjectType):
+    customers = graphene.List(CustomerType)
+    producs = graphene.List(ProductType)
+    orders = graphene.List(OrderType)
+
+    def resolve_customers(self, info):
+        return Customer.objects.all()
+
+    def resolve_products(self, info):
+        return Product.objects.all()
+
+    def resolve_orders(self, info):
+        return Order.objects.all()
+
+
